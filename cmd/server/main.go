@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	middleware "peerTopeer/network"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -18,7 +20,7 @@ var upgrader = websocket.Upgrader{
 
 func roomHealthHandler(w http.ResponseWriter, r *http.Request) {
 	// check if a room is live or not
-	if r.Method != http.MethodPost {
+	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -88,8 +90,26 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	http.HandleFunc("/ws", wsHandler)
-	http.HandleFunc("/health", roomHealthHandler)
+	// Apply middleware to handlers
+	http.Handle("/ws", middleware.TrafficMonitor(
+		middleware.SecurityMonitor(
+			middleware.PerformanceMonitor(1*time.Second)(
+				middleware.RateLimitMonitor(
+					http.HandlerFunc(wsHandler),
+				),
+			),
+		),
+	))
+	http.Handle("/health", middleware.TrafficMonitor(
+		middleware.SecurityMonitor(
+			middleware.PerformanceMonitor(1*time.Second)(
+				middleware.RateLimitMonitor(
+					http.HandlerFunc(roomHealthHandler),
+				),
+			),
+		),
+	))
+
 	log.Println("Hello. I am listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
